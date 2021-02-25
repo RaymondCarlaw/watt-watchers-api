@@ -63,7 +63,6 @@ def getRequest(
     retryCount = 0
     while True:
         try:
-            print(params)
             response = session.get(url, **params)
             
             rateLimits = _parse_headers(response)
@@ -217,8 +216,10 @@ class Client:
         if filter is not None:
             params['filter[group]'] = str(filter)
 
+        self.__shortDataSchema.context['unit'] = Energy.Joules
         if convert is not None:
             params['convert[energy]'] = str(convert)
+            self.__shortDataSchema.context['unit'] = str(convert)
 
         if fields is not None:
             params['fields[energy]'] = str(fields)
@@ -263,8 +264,10 @@ class Client:
         if filter is not None:
             params['filter'] = str(filter)
 
+        self.__shortDataSchema.context['unit'] = Energy.Joules
         if convert is not None:
             params['convert'] = str(convert)
+            self.__shortDataSchema.context['unit'] = str(convert)
 
         if fields is not None:
             params['fields'] = str(fields)
@@ -291,8 +294,10 @@ class Client:
         if filter is not None:
             params['filter[group]'] = str(filter)
 
+        self.__shortDataSchema.context['unit'] = Energy.Joules
         if convert is not None:
             params['convert[energy]'] = str(convert)
+            self.__shortDataSchema.context['unit'] = str(convert)
 
         if fields is not None:
             params['fields[energy]'] = str(fields)
@@ -340,8 +345,10 @@ class Client:
         if filter is not None:
             params['filter[group]'] = str(filter)
 
+        self.__longDataSchema.context['unit'] = Energy.Joules
         if convert is not None:
             params['convert[energy]'] = str(convert)
+            self.__longDataSchema.context['unit'] = str(convert)
 
         if fields is not None:
             params['fields[energy]'] = str(fields)
@@ -360,13 +367,13 @@ class Client:
         # if period is longer than 12 hours then batch calls
         for period in periods:
             requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp()), **params}
-            print(requestParams)
+            
             content, rateLimits = getRequest(url, 
                 self.__session, self.timeout, 
                 retry=self.retry, params=requestParams,
                 **kwargs)
             self.RateLimits = rateLimits
-            print(content)
+            
             longData = self.__longDataSchema.loads(content, many=True)
             data.extend(longData)
 
@@ -384,8 +391,10 @@ class Client:
         if filter is not None:
             params['filter'] = str(filter)
 
+        self.__longDataSchema.context['unit'] = Energy.Joules
         if convert is not None:
             params['convert'] = str(convert)
+            self.__longDataSchema.context['unit'] = str(convert)
 
         if fields is not None:
             params['fields'] = str(fields)
@@ -411,8 +420,10 @@ class Client:
         if filter is not None:
             params['filter'] = str(filter)
 
+        self.__longDataSchema.context['unit'] = Energy.Joules
         if convert is not None:
             params['convert'] = str(convert)
+            self.__longDataSchema.context['unit'] = str(convert)
 
         if fields is not None:
             params['fields'] = str(fields)

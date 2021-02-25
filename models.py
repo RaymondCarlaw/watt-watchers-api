@@ -2,7 +2,7 @@ from dataclasses import dataclass, field, InitVar
 import marshmallow
 from marshmallow_dataclass import class_schema
 from typing import Optional, List, Dict, Union, Tuple
-from .enums import SignalQuality
+from .enums import SignalQuality, Energy
 from .utilities import signalQuality
 from datetime import datetime
 
@@ -25,6 +25,25 @@ class TimeStamp(marshmallow.fields.DateTime):
 class BaseSchema(marshmallow.Schema):
     TYPE_MAPPING = {datetime: TimeStamp}
     
+    @marshmallow.pre_load
+    def pre_load(self, data, **kwargs):
+        if 'unit' not in self.context:
+            return data
+
+        data['unit'] = str(self.context['unit'])
+        if self.context['unit'] == Energy.Killowatts:
+            for k in data.keys():
+                if k.endswith('kW'):
+                    newK = 'e' + k[1:len(k) - 2]
+                    data[newK] = data[k]
+        elif self.context['unit'] == Energy.KillowattHours:
+            for k in data.keys():
+                if k.endswith('kWh'):
+                    newK = 'e' + k[1:len(k) - 2]
+                    data[newK] = data[k]
+        
+        return data
+
     def on_bind_field(self, field_name, field_obj):
         name = field_obj.data_key or field_name
         field_obj.data_key = name[0].lower() + name[1:]
@@ -160,9 +179,10 @@ class ShortData:
     Timestamp: datetime = None
     Duration: int = None
     Frequency: float = None
+    Unit: str = None
     GroupedBy: Optional[str] = None
-    EnergyReal: List[int] = field(metadata=dict(data_key='eReal'), default=None)
-    EnergyReactive: List[int] = field(metadata=dict(data_key='eReactive'), default=None)
+    Real: List[int] = field(metadata=dict(data_key='eReal'), default=None)
+    Reactive: List[int] = field(metadata=dict(data_key='eReactive'), default=None)
     VoltageRMS: List[float] = field(metadata=dict(data_key='vRMS'), default=None)
     CurrentRMS: List[float] = field(metadata=dict(data_key='iRMS'), default=None)
 
@@ -176,12 +196,13 @@ ShortDataSchema = class_schema(ShortData, base_schema=BaseSchema)
 class LongData:
     Timestamp: datetime = None
     Duration: int = None
-    EnergyReal: List[int] = field(metadata=dict(data_key='eReal'), default=None)
-    EnergyRealNegative: List[int] = field(metadata=dict(data_key='eRealNegative'), default=None)
-    EnergyRealPositive: List[int] = field(metadata=dict(data_key='eRealPositive'), default=None)
-    EnergyReactive: List[int] = field(metadata=dict(data_key='eReactive'), default=None)
-    EnergyReactiveNegative: List[int] = field(metadata=dict(data_key='eReactiveNegative'), default=None)
-    EnergyReactivePositive: List[int] = field(metadata=dict(data_key='eReactivePositive'), default=None)
+    Unit: str = None
+    Real: List[int] = field(metadata=dict(data_key='eReal'), default=None)
+    RealNegative: List[int] = field(metadata=dict(data_key='eRealNegative'), default=None)
+    RealPositive: List[int] = field(metadata=dict(data_key='eRealPositive'), default=None)
+    Reactive: List[int] = field(metadata=dict(data_key='eReactive'), default=None)
+    ReactiveNegative: List[int] = field(metadata=dict(data_key='eReactiveNegative'), default=None)
+    ReactivePositive: List[int] = field(metadata=dict(data_key='eReactivePositive'), default=None)
     VoltageRMSMin: List[float] = field(metadata=dict(data_key='vRMSMin'), default=None)
     VoltageRMSMax: List[float] = field(metadata=dict(data_key='vRMSMax'), default=None)
     CurrentRMSMin: List[float] = field(metadata=dict(data_key='iRMSMin'), default=None)
