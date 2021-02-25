@@ -13,6 +13,8 @@ Create a client using the watt watchers api key you copied from their portal. Re
         shortEnergy = client.shortEnergy(d.Id)
         longEnergy = client.longEnergy(d.Id)
         modbusData = client.modbus(d.Id)
+        d.label = 'new'
+        d.update()
 
 ## Dependencies
 * Marshmallow
