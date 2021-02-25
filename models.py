@@ -2,8 +2,8 @@ from dataclasses import dataclass, field, InitVar
 import marshmallow
 from marshmallow_dataclass import class_schema
 from typing import Optional, List, Dict, Union, Tuple
-from .enums import SignalQuality, Energy
-from .utilities import signalQuality
+from .enums import Energy
+from .utilities import SignalQuality
 from datetime import datetime
 
 class TimeStamp(marshmallow.fields.DateTime):
@@ -31,15 +31,16 @@ class BaseSchema(marshmallow.Schema):
             return data
 
         data['unit'] = str(self.context['unit'])
+        keys = [*data.keys()]
         if self.context['unit'] == Energy.Killowatts:
-            for k in data.keys():
-                if k.endswith('kW'):
+            for k in keys:
+                if k.endswith('Kw'):
                     newK = 'e' + k[1:len(k) - 2]
                     data[newK] = data[k]
         elif self.context['unit'] == Energy.KillowattHours:
-            for k in data.keys():
-                if k.endswith('kWh'):
-                    newK = 'e' + k[1:len(k) - 2]
+            for k in keys:
+                if k.endswith('Kwh'):
+                    newK = 'e' + k[1:len(k) - 3]
                     data[newK] = data[k]
         
         return data
@@ -117,7 +118,7 @@ class DeviceComms:
         else:
             return None
 
-        return signalQuality(commsType, self.SignalQualityDbm)
+        return SignalQuality(commsType, self.SignalQualityDbm)
 
     class Meta:
         unknown = marshmallow.EXCLUDE
@@ -181,8 +182,8 @@ class ShortData:
     Frequency: float = None
     Unit: str = None
     GroupedBy: Optional[str] = None
-    Real: List[int] = field(metadata=dict(data_key='eReal'), default=None)
-    Reactive: List[int] = field(metadata=dict(data_key='eReactive'), default=None)
+    Real: List[float] = field(metadata=dict(data_key='eReal'), default=None)
+    Reactive: List[float] = field(metadata=dict(data_key='eReactive'), default=None)
     VoltageRMS: List[float] = field(metadata=dict(data_key='vRMS'), default=None)
     CurrentRMS: List[float] = field(metadata=dict(data_key='iRMS'), default=None)
 
@@ -198,11 +199,11 @@ class LongData:
     Duration: int = None
     Unit: str = None
     Real: List[int] = field(metadata=dict(data_key='eReal'), default=None)
-    RealNegative: List[int] = field(metadata=dict(data_key='eRealNegative'), default=None)
-    RealPositive: List[int] = field(metadata=dict(data_key='eRealPositive'), default=None)
-    Reactive: List[int] = field(metadata=dict(data_key='eReactive'), default=None)
-    ReactiveNegative: List[int] = field(metadata=dict(data_key='eReactiveNegative'), default=None)
-    ReactivePositive: List[int] = field(metadata=dict(data_key='eReactivePositive'), default=None)
+    RealNegative: List[float] = field(metadata=dict(data_key='eRealNegative'), default=None)
+    RealPositive: List[float] = field(metadata=dict(data_key='eRealPositive'), default=None)
+    Reactive: List[float] = field(metadata=dict(data_key='eReactive'), default=None)
+    ReactiveNegative: List[float] = field(metadata=dict(data_key='eReactiveNegative'), default=None)
+    ReactivePositive: List[float] = field(metadata=dict(data_key='eReactivePositive'), default=None)
     VoltageRMSMin: List[float] = field(metadata=dict(data_key='vRMSMin'), default=None)
     VoltageRMSMax: List[float] = field(metadata=dict(data_key='vRMSMax'), default=None)
     CurrentRMSMin: List[float] = field(metadata=dict(data_key='iRMSMin'), default=None)

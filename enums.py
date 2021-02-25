@@ -4,6 +4,12 @@ class BaseEnum(Enum):
     def __str__(self):
         return str(self.value)
 
+    def __eq__(self, other):
+        return str(self.value) == str(other)
+
+    def __hash__(self):
+        return object.__hash__(str(self.value))
+
 @unique
 class Groups(BaseEnum):
     Phases = 'phases'

@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Union, Tuple
 from . import TIMEOUT, API_ENDPOINT, HEADERS, RETRY
 from .exceptions import CommonError
 from .enums import Energy, Groups, Granularity
+from .utilities import NormaliseTimestamps, CreateQueryWindows
 from .models import (
     RateLimits, RateLimitsSchema, Device, DeviceSchema,
     ShortData, ShortDataSchema, LongData, LongDataSchema,
@@ -18,32 +19,11 @@ __all__ = [
     "getRequest"
 ]
 
-def _parse_headers(response) -> RateLimits:
+def _parseHeaders(response) -> RateLimits:
     headers = response.headers
     return RateLimitsSchema().load(headers)
 
-def _normalise_timestamps(fromTs: Union[int, datetime], toTs: Union[int, datetime], extensionPeriod: timedelta):
-    if fromTs is None and toTs is None:
-        toTs = datetime.now(dtTimezone.utc)
-        fromTs = toTs - extensionPeriod
 
-    if toTs is None:
-        toTs = datetime.now(dtTimezone.utc)
-    else:
-        if isinstance(toTs, int):
-            toTs = datetime.fromtimestamp(toTs)
-        elif not isinstance(toTs, datetime):
-            raise TypeError(toTs)
-
-    if fromTs is None:
-        fromTs = toTs - extensionPeriod
-    else:
-        if isinstance(fromTs, int):
-            fromTs = datetime.fromtimestamp(fromTs)
-        elif not isinstance(fromTs, datetime):
-            raise TypeError(fromTs)
-
-    return (fromTs, toTs)
 
 def getRequest(
     url: str, 
@@ -65,7 +45,7 @@ def getRequest(
         try:
             response = session.get(url, **params)
             
-            rateLimits = _parse_headers(response)
+            rateLimits = _parseHeaders(response)
             if response.ok:
                 return (response.content, rateLimits)
             elif response.status_code == requests.codes.too_many_requests and rateLimits.RemainingPerDay > 0:
@@ -210,7 +190,7 @@ class Client:
         url = f"{self.endpoint}/short-energy/{deviceId}"
         maxQueryPeriod = timedelta(hours=12)
 
-        fromTs, toTs = _normalise_timestamps(fromTs, toTs, maxQueryPeriod)
+        fromTs, toTs = NormaliseTimestamps(fromTs, toTs, maxQueryPeriod)
         params = dict()
 
         if filter is not None:
@@ -224,19 +204,9 @@ class Client:
         if fields is not None:
             params['fields[energy]'] = str(fields)
 
-        data = []; periods = []
-        if (toTs - fromTs) > maxQueryPeriod:
-            currentTs = fromTs
-            while currentTs + maxQueryPeriod < toTs:
-                periods.append((currentTs, currentTs + maxQueryPeriod))
-                currentTs += maxQueryPeriod
-
-            periods.append((currentTs, toTs))
-        else:
-            periods = [(fromTs, toTs)]
-        
-        # if period is longer than 12 hours then batch calls
-        for period in periods:
+        data = []
+        windows = CreateQueryWindows(fromTs, toTs, maxQueryPeriod)
+        for period in windows:
             requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp()), **params}
             
             content, rateLimits = getRequest(url, 
@@ -340,7 +310,7 @@ class Client:
         url = f"{self.endpoint}/long-energy/{deviceId}"
 
         params = {"granularity": str(granularity), "timezone": self.timezone}
-        fromTs, toTs = _normalise_timestamps(fromTs, toTs, extendPeriod)
+        fromTs, toTs = NormaliseTimestamps(fromTs, toTs, extendPeriod)
 
         if filter is not None:
             params['filter[group]'] = str(filter)
@@ -354,18 +324,10 @@ class Client:
             params['fields[energy]'] = str(fields)
 
         data = []; periods = []
-        if (toTs - fromTs) > maxQueryPeriod:
-            currentTs = fromTs
-            while currentTs + maxQueryPeriod < toTs:
-                periods.append((currentTs, currentTs + maxQueryPeriod))
-                currentTs += maxQueryPeriod
-
-            periods.append((currentTs, toTs))
-        else:
-            periods = [(fromTs, toTs)]
+        windows = CreateQueryWindows(fromTs, toTs, maxQueryPeriod)
         
         # if period is longer than 12 hours then batch calls
-        for period in periods:
+        for period in windows:
             requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp()), **params}
             
             content, rateLimits = getRequest(url, 
@@ -439,17 +401,27 @@ class Client:
 
     def modbus(self, 
             deviceId: str, 
+            fromTs: Union[int, datetime] = None,
+            toTs: Union[int, datetime] = None,
             **kwargs):
         url = f"{self.endpoint}/modbus/{deviceId}"
+        maxQueryPeriod = timedelta(days=7)
 
-        params = {}
-        content, rateLimits = getRequest(url, 
-            self.__session, self.timeout, 
-            retry=self.retry, params=params,
-            **kwargs)
-        self.RateLimits = rateLimits
+        fromTs, toTs = NormaliseTimestamps(fromTs, toTs, maxQueryPeriod)
 
-        return self.__modbusDataSchema.loads(content, many=True)
+        data = []
+        windows = CreateQueryWindows(fromTs, toTs, maxQueryPeriod)
+        for period in windows:
+            requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp())}
+            content, rateLimits = getRequest(url, 
+                self.__session, self.timeout, 
+                retry=self.retry, params=requestParams,
+                **kwargs)
+            self.RateLimits = rateLimits
+
+            data.extend(self.__modbusDataSchema.loads(content, many=True))
+
+        return data
 
 
 
