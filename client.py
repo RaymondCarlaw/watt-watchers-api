@@ -159,7 +159,7 @@ class Client:
         devices = []
         deviceIds = json.loads(content)
         for deviceId in deviceIds:
-            devices.append(Device(deviceId, client=self))
+            devices.append(Device(deviceId, _client=self))
 
         return devices
 
@@ -203,7 +203,7 @@ class Client:
 
         return ChannelCategorySchema().loads(content, many=True)
 
-    def modelTypess(self, **kwargs) -> List[DeviceModel]:
+    def modelTypes(self, **kwargs) -> List[DeviceModel]:
         url = f"{self.endpoint}/devices/models"
 
         content, rateLimits = GetRequest(url, 

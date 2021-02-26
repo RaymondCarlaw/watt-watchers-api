@@ -1,8 +1,8 @@
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field, InitVar, fields
 import marshmallow
 import inspect
 from marshmallow_dataclass import class_schema
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Optional, List, Dict, Union, Tuple, Any
 from .enums import Energy
 from .utilities import SignalQuality
 from datetime import datetime
@@ -28,6 +28,9 @@ class BaseSchema(marshmallow.Schema):
     
     @marshmallow.pre_load
     def pre_load(self, data, **kwargs):
+        if 'client' in self.context:
+            data['_client'] = self.context['client']
+
         if 'unit' not in self.context:
             return data
 
@@ -136,6 +139,15 @@ class ChannelAttribute:
     CategoryLabel: str = None
     pending: DevicePending = field(default=DevicePending)
     
+    def __post_init__(self):
+        self._dirtyFields = {}
+
+    def __setattr__(self, name, value):
+        if '_' not in name and name != 'Id' and hasattr(self, '_dirtyFields'):
+            object.__getattribute__(self, '_dirtyFields')[name] = value
+            
+        object.__setattr__(self, name, value)
+
     class Meta:
         unknown = marshmallow.EXCLUDE
 
@@ -146,6 +158,9 @@ ChannelAttributeSchema = class_schema(ChannelAttribute, base_schema=BaseSchema)
 class ChannelGrouping:
     Included: List[str] = field(default_factory=list)
 
+    class Meta:
+        unknown = marshmallow.EXCLUDE
+
 ChannelGroupingSchema = class_schema(ChannelGrouping, base_schema=BaseSchema)
 
 
@@ -153,6 +168,15 @@ ChannelGroupingSchema = class_schema(ChannelGrouping, base_schema=BaseSchema)
 class PhaseConfiguration:
     Count: int = None
     Grouping: List[ChannelGrouping] = field(default_factory=list)
+    
+    def __post_init__(self):
+        self._dirtyFields = {}
+
+    def __setattr__(self, name, value):
+        if '_' not in name and name != 'Id' and hasattr(self, '_dirtyFields'):
+            object.__getattribute__(self, '_dirtyFields')[name] = value
+            
+        object.__setattr__(self, name, value)
 
     class Meta:
         unknown = marshmallow.EXCLUDE
@@ -169,6 +193,15 @@ class SwitchAttribute:
     ClosedStateLabel: str = None
     OpenStateLabel: str = None
     Pending: DevicePending = field(default=DevicePending)
+
+    def __post_init__(self):
+        self._dirtyFields = {}
+
+    def __setattr__(self, name, value):
+        if '_' not in name and name != 'Id' and hasattr(self, '_dirtyFields'):
+            object.__getattribute__(self, '_dirtyFields')[name] = value
+            
+        object.__setattr__(self, name, value)
 
     class Meta:
         unknown = marshmallow.EXCLUDE
@@ -264,17 +297,50 @@ class Device:
     Phases: PhaseConfiguration = field(default=PhaseConfiguration)
     Switches: List[SwitchAttribute] = field(default_factory=list)
 
-    client: InitVar[object] = None
+    _client: Optional[Any] = None
 
     _dirtyFields = {}
     _isPartial = False
 
-    def __post_init__(self, client = None, *args, **kwargs):
-        self.__client = client
+    def __post_init__(self, *args, **kwargs):
         self._isPartial = self.Model == None
 
     def update(self):
-        self.__client.updateDevice(self.Id, self._dirtyFields)
+        if self.Phases._dirtyFields != {}:
+            self._dirtyFields['phases'] = PhaseConfigurationSchema().dump(self.Phases)
+        dirtyChannels = []
+        for c in self.Channels:
+            if c._dirtyFields != {}:
+                dirtyChannels.append(c)
+        
+        dirtySwitches = []
+        for s in self.Switches:
+            if s._dirtyFields != {}:
+                dirtySwitches.append(s)
+        
+        if dirtyChannels:
+            schema = ChannelAttributeSchema()
+            self._dirtyFields['channels'] = []
+            for c in dirtyChannels:
+                dc = schema.dump(c)
+                del dc['categoryLabel']; del dc['pending']
+                self._dirtyFields['channels'].append(dc)
+
+        if dirtySwitches:
+            schema = SwitchAttributeSchema()
+            self._dirtyFields['switches'] = [schema.dump(s) for s in dirtySwitches]
+
+        self._client.updateDevice(self.Id, self._dirtyFields)
+        if 'phases' in self._dirtyFields:
+            self.Phases._dirtyFields = {}
+        
+        for c in dirtyChannels:
+            c._dirtyFields = {}
+        
+        for s in dirtySwitches:
+            c._dirtyFields = {}
+
+        self._dirtyFields = {}
 
     def __setattr__(self, name, value):
         if '_' not in name and name != 'Id':
@@ -285,9 +351,9 @@ class Device:
     def __getattribute__(self, name):
 
         if name != 'Id' and '_' not in name and object.__getattribute__(self, '_isPartial'):
-            device = self.__client.device(self.Id)
-            members = inspect.getmembers(Device, lambda x: not(inspect.isroutine(x)))
-            for dname, dtype in [n for n in members if '_' not in n[0]]:
+            device = self._client.device(self.Id)
+            members = fields(Device)
+            for dname in [n.name for n in members if '_' not in n.name]:
                 setattr(self, dname, getattr(device, dname))
 
             self._isPartial = False
