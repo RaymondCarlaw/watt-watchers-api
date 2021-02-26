@@ -2,9 +2,9 @@ import requests
 import json
 from time import sleep
 from datetime import datetime, timezone as dtTimezone, timedelta
-from typing import Optional, List, Dict, Union, Tuple
-from . import TIMEOUT, API_ENDPOINT, HEADERS, RETRY
-from .exceptions import CommonError
+from typing import Optional, List, Dict, Union, Tuple, Callable
+from . import TIMEOUT, API_ENDPOINT, HEADERS, RETRY, logger
+from .exceptions import CommonError, UnprocessableEntityError
 from .enums import Energy, Groups, Granularity
 from .utilities import NormaliseTimestamps, CreateQueryWindows
 from .models import (
@@ -16,16 +16,18 @@ from .models import (
 
 __all__ = [
     "Client",
-    "getRequest"
+    "GetRequest",
+    "PatchRequest",
+    "ApiRequest"
 ]
+
 
 def _parseHeaders(response) -> RateLimits:
     headers = response.headers
     return RateLimitsSchema().load(headers)
 
 
-
-def getRequest(
+def GetRequest(
     url: str, 
     session: requests.Session, 
     timeout: Union[int, float, Tuple[int, int]] = 3,
@@ -33,17 +35,44 @@ def getRequest(
     retry = 3,
     params = {},
     **kwargs
-) -> bytes:
+) -> Tuple[bytes, RateLimits]:
     params = {
         "timeout": timeout,
         "params": params,
         **kwargs, 
     }
 
+    requestFunc = lambda: session.get(url, **params)
+    return ApiRequest(requestFunc, retry)
+    
+
+def PatchRequest(
+    url: str, 
+    session: requests.Session, 
+    timeout: Union[int, float, Tuple[int, int]] = 3,
+    headers: Dict[str, str] = {},
+    retry = 3,
+    params = {},
+    **kwargs
+) -> Tuple[bytes, RateLimits]:
+    params = {
+        "timeout": timeout,
+        "json": params,
+        **kwargs, 
+    }
+
+    requestFunc = lambda: session.patch(url, **params)
+    return ApiRequest(requestFunc, retry)
+
+def ApiRequest(
+    requestFunc: Callable,
+    retry = 3,
+) -> Tuple[bytes, RateLimits]:
+
     retryCount = 0
     while True:
         try:
-            response = session.get(url, **params)
+            response = requestFunc()
             
             rateLimits = _parseHeaders(response)
             if response.ok:
@@ -54,7 +83,10 @@ def getRequest(
             else:
                 try:
                     content = response.json()
-                    error = CommonError(content, rateLimits)
+                    if response.status_code == requests.codes.unprocessable_entity:
+                        error = UnprocessableEntityError(content)
+                    else:
+                        error = CommonError(content, rateLimits)
                 except Exception:
                     response.raise_for_status()
                 
@@ -119,7 +151,7 @@ class Client:
 
         url = f"{self.endpoint}/devices"
         
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
             self.__session, self.timeout, 
             retry=self.retry, **kwargs)
         self.RateLimits = rateLimits
@@ -134,20 +166,37 @@ class Client:
     def device(self, deviceId: str, **kwargs) -> Device:
         url = f"{self.endpoint}/devices/{deviceId}"
         
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
             self.__session, self.timeout, 
             retry=self.retry, **kwargs)
         self.RateLimits = rateLimits
         
         return self.__deviceSchema.loads(content)
 
-    def updateDevice(self, deviceId: str, updateFields, **kwargs) -> Device:
-        pass
+    def updateDevice(self, deviceId: Union[str, Device], updateFields, **kwargs) -> Device:
+        url = f"{self.endpoint}/devices/{deviceId}"
+        body = {
+            "id": deviceId,
+        }
+        validFields = ("label", "timezone", "channels", "phases", "switches")
+        for key in updateFields.keys():
+            newKey = key[0].lower() + key[1:]
+            if newKey in validFields:
+                body[newKey] = updateFields[key]
+            else:
+                logger.warning(f"{key} is not a valid update field")
+
+        _, rateLimits = PatchRequest(url,
+            self.__session, self.timeout,
+            retry=self.retry, params=body,
+            **kwargs)
+        self.RateLimits = rateLimits
+
 
     def channelCategories(self, **kwargs) -> List[ChannelCategory]:
         url = f"{self.endpoint}/devices/channel-categories"
 
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
             self.__session, self.timeout, 
             retry=self.retry, **kwargs)
         self.RateLimits = rateLimits
@@ -157,7 +206,7 @@ class Client:
     def modelTypess(self, **kwargs) -> List[DeviceModel]:
         url = f"{self.endpoint}/devices/models"
 
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
             self.__session, self.timeout, 
             retry=self.retry, **kwargs)
         self.RateLimits = rateLimits
@@ -209,7 +258,7 @@ class Client:
         for period in windows:
             requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp()), **params}
             
-            content, rateLimits = getRequest(url, 
+            content, rateLimits = GetRequest(url, 
                 self.__session, self.timeout, 
                 retry=self.retry, params=requestParams,
                 **kwargs)
@@ -242,7 +291,7 @@ class Client:
         if fields is not None:
             params['fields'] = str(fields)
 
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
             self.__session, self.timeout, 
             retry=self.retry, params=params,
             **kwargs)
@@ -272,7 +321,7 @@ class Client:
         if fields is not None:
             params['fields[energy]'] = str(fields)
 
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
             self.__session, self.timeout, 
             retry=self.retry, params=params,
             **kwargs)
@@ -330,7 +379,7 @@ class Client:
         for period in windows:
             requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp()), **params}
             
-            content, rateLimits = getRequest(url, 
+            content, rateLimits = GetRequest(url, 
                 self.__session, self.timeout, 
                 retry=self.retry, params=requestParams,
                 **kwargs)
@@ -361,7 +410,7 @@ class Client:
         if fields is not None:
             params['fields'] = str(fields)
 
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
                 self.__session, self.timeout, 
                 retry=self.retry, params=params,
                 **kwargs)
@@ -390,7 +439,7 @@ class Client:
         if fields is not None:
             params['fields'] = str(fields)
 
-        content, rateLimits = getRequest(url, 
+        content, rateLimits = GetRequest(url, 
                 self.__session, self.timeout, 
                 retry=self.retry, params=params,
                 **kwargs)
@@ -413,7 +462,7 @@ class Client:
         windows = CreateQueryWindows(fromTs, toTs, maxQueryPeriod)
         for period in windows:
             requestParams = {"fromTs": int(period[0].timestamp()), "toTs": int(period[1].timestamp())}
-            content, rateLimits = getRequest(url, 
+            content, rateLimits = GetRequest(url, 
                 self.__session, self.timeout, 
                 retry=self.retry, params=requestParams,
                 **kwargs)

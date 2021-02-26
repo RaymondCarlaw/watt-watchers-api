@@ -1,5 +1,5 @@
 # Watt Watchers V3 API
-This is a python framework for working with Watt Watchers V3 REST API
+This is a python library for working with Watt Watchers V3 REST API
 This requires Python 3.6+
 
 This is not a pip library, but you are welcome to clone this repository and include in your own project.

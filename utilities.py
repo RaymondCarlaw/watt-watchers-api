@@ -57,8 +57,9 @@ def CreateQueryWindows(fromTs: datetime, toTs: datetime, maxQueryPeriod):
         while currentTs + maxQueryPeriod < toTs:
             windows.append((currentTs, currentTs + maxQueryPeriod))
             currentTs += maxQueryPeriod
-
-        windows.append((currentTs, toTs))
+        
+        if currentTs < toTs:
+            windows.append((currentTs, toTs))
     else:
         windows = [(fromTs, toTs)]
 

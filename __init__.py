@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger('WattWatchersAPI')
 
 
 API_ENDPOINT = "https://api-v3.wattwatchers.com.au"
@@ -9,9 +11,12 @@ HEADERS = {
 TIMEOUT = (5, 30)
 RETRY = None
 
-from .client import Client, getRequest
+
+from .client import Client, GetRequest, PatchRequest
 from .exceptions import CommonError
 from .models import (
     RateLimits, ShortData, 
     LongData, ModbusData, Device)
+
+
 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field, InitVar
 import marshmallow
+import inspect
 from marshmallow_dataclass import class_schema
 from typing import Optional, List, Dict, Union, Tuple
 from .enums import Energy
@@ -273,7 +274,7 @@ class Device:
         self._isPartial = self.Model == None
 
     def update(self):
-        self.__client.updateDevice(self.Id, self.dirtyFields)
+        self.__client.updateDevice(self.Id, self._dirtyFields)
 
     def __setattr__(self, name, value):
         if '_' not in name and name != 'Id':
@@ -285,8 +286,10 @@ class Device:
 
         if name != 'Id' and '_' not in name and object.__getattribute__(self, '_isPartial'):
             device = self.__client.device(self.Id)
-            for dname in [n for n in dir(device) if '_' not in n]:
+            members = inspect.getmembers(Device, lambda x: not(inspect.isroutine(x)))
+            for dname, dtype in [n for n in members if '_' not in n[0]]:
                 setattr(self, dname, getattr(device, dname))
+
             self._isPartial = False
             self._dirtyFields = {}
         
